@@ -9,6 +9,11 @@ UI from `host/pi/ui/source` with `npm ci` and `npm run build`.
 The coordinator listens on loopback at port 8090 for the local kiosk, and the
 UI server listens on loopback at port 8088. The U1 address shown is the
 observed private link (`10.42.0.10:7125`); configure it for your network.
+The coordinator accepts browser requests from local UI origins on ports 8088
+and 3000. If the UI runs at another origin, set `SC_ALLOWED_ORIGINS` to an
+explicit comma-separated list of trusted origins. Requests from other browser
+origins are rejected. Keep the API bound to loopback; browser origin checks
+do not authenticate local programs that can connect directly.
 The watcher starts with `DELETE_RAW=0`, `FIREWALL_RAW=0`, and `AUTO_START=0`.
 The active print-start service is intentionally not included as an example.
 

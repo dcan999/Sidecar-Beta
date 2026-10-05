@@ -17,8 +17,11 @@ U1_HTTP = os.getenv("U1_HTTP", "http://10.42.0.10:7125").rstrip("/")
 U1_WS   = os.getenv("U1_WS",   "ws://10.42.0.10:7125/websocket").rstrip("/")
 BT_HTTP = os.getenv("BT_HTTP", "http://127.0.0.1:7125").rstrip("/")
 SC_HEADS_CFG = os.getenv("SC_HEADS_CFG", "/home/sidecar/sidecar/state/sc_heads.json")
-SC_API_HOST  = os.getenv("SC_API_HOST", "0.0.0.0")
+SC_API_HOST  = os.getenv("SC_API_HOST", "127.0.0.1")
 SC_API_PORT  = int(os.getenv("SC_API_PORT", "8090"))
+SC_ALLOWED_ORIGINS = frozenset(origin.strip() for origin in os.getenv(
+    "SC_ALLOWED_ORIGINS", "http://127.0.0.1:8088,http://localhost:8088,http://127.0.0.1:3000,http://localhost:3000"
+).split(",") if origin.strip())
 
 
 SERVO_CFG = os.getenv("SERVO_CFG", "/home/sidecar/sidecar/state/servo_mapping.json")
@@ -919,7 +922,10 @@ def _api_json(handler, max_bytes=65536):
 def _api_send(handler, code: int, obj: dict):
     body = json.dumps(obj).encode("utf-8")
     handler.send_response(code)
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    origin = handler.headers.get("Origin")
+    if origin in SC_ALLOWED_ORIGINS:
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.send_header("Content-Type", "application/json")
@@ -996,13 +1002,21 @@ class _ApiHandler(BaseHTTPRequestHandler):
         return
 
     def do_OPTIONS(self):
+        origin = self.headers.get("Origin")
+        if origin not in SC_ALLOWED_ORIGINS:
+            _api_send(self, 403, {"ok": False, "error": "origin_denied"})
+            return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self):
+        if self.headers.get("Origin") not in (None, *SC_ALLOWED_ORIGINS):
+            _api_send(self, 403, {"ok": False, "error": "origin_denied"})
+            return
         if self.path == "/api/v1/heads":
             _api_send(self, 200, {"ok": True, "cfg": sc_cfg_load()})
             return
@@ -1101,6 +1115,9 @@ class _ApiHandler(BaseHTTPRequestHandler):
         _api_send(self, 404, {"ok": False, "error": "not_found"})
 
     def do_POST(self):
+        if self.headers.get("Origin") not in (None, *SC_ALLOWED_ORIGINS):
+            _api_send(self, 403, {"ok": False, "error": "origin_denied"})
+            return
         try:
             p = self.path.split("?", 1)[0]
             if p == "/api/v1/servo/identify/start":

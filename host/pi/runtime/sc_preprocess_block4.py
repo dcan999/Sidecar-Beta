@@ -43,6 +43,16 @@ def main() -> int:
     ap.add_argument("--sc-heads", default="0,1,2,3")
     args = ap.parse_args()
 
+    if args.lanes_per_sc != 4:
+        ap.error("block-of-four tool mapping requires --lanes-per-sc=4")
+    try:
+        sc_heads = [int(value.strip()) for value in args.sc_heads.split(",")]
+    except ValueError:
+        ap.error("--sc-heads must be a comma-separated list of head indices 0..3")
+    if not sc_heads or len(set(sc_heads)) != len(sc_heads) or any(h not in range(4) for h in sc_heads):
+        ap.error("--sc-heads must contain unique head indices 0..3")
+    enabled_heads = set(sc_heads)
+
     with open(args.input, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
 
@@ -87,7 +97,7 @@ def main() -> int:
                     and temp_s is not None
                     and int(temp_s) == SIDECAR_COOLDOWN_FROM_C):
                 tool = int(tool_s)
-                if 0 <= tool <= 15:
+                if 0 <= tool <= 15 and hl(tool)[0] in enabled_heads:
                     h_cd, lane_cd = hl(tool)
                     for _j, _t, _indent in tool_pos:
                         if _j <= i:
@@ -116,7 +126,7 @@ def main() -> int:
 
             if h_prev != h_now:
                 t_next = next_tool_same_head[last_k]
-                if t_next is not None:
+                if h_prev in enabled_heads and t_next is not None:
                     h_next, lane_next = hl(t_next)
                     if h_next == h_prev and lane_next != lane_prev:
                         prime = args.purge_len if args.purge_len > MIN_PRIME_MM else MIN_PRIME_MM

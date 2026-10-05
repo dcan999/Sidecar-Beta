@@ -113,6 +113,49 @@ class PiReleaseTests(unittest.TestCase):
             self.assertEqual(processed.count('T4\n'), 1)
             self.assertEqual(processed.count('T1\n'), 1)
 
+    def test_preprocessor_respects_enabled_heads_and_rejects_other_lane_maps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            raw = Path(directory) / 'job.gcode'
+            raw.write_text('T0\nT4\nM104 T0 S70 ; cooldown\nT1\n', encoding='utf-8')
+            script = str(self._source('sc_preprocess_block4.py'))
+            result = subprocess.run([sys.executable, script, '--sc-heads', '1',
+                                     str(raw)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            processed = (raw.parent / 'SCPRO_job.gcode').read_text()
+            self.assertNotIn('EV=UNLOAD', processed)
+            self.assertIn('M104 T0 S70 ; cooldown', processed)
+            for options in (['--lanes-per-sc', '3'], ['--sc-heads', '0,4'],
+                            ['--sc-heads', '0,0']):
+                result = subprocess.run([sys.executable, script, *options, str(raw)],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_api_rejects_foreign_browser_origin_before_dispatch(self):
+        with (patch.dict(sys.modules, {'websocket': types.SimpleNamespace()}),
+              patch('socket.socket') as sock):
+            sock.return_value.getsockname.return_value = ('127.0.0.1', 0)
+            module = load_module(self._source('sc_gate.py'), 'gate_origin_test')
+        def handler(origin):
+            h = object.__new__(module._ApiHandler)
+            h.headers = {'Origin': origin}
+            h.path = '/api/v1/heads'
+            h.wfile = io.BytesIO()
+            h.send_response = lambda code: setattr(h, 'code', code)
+            h.sent_headers = {}
+            h.send_header = lambda key, value: h.sent_headers.__setitem__(key, value)
+            h.end_headers = lambda: None
+            return h
+        for method in ('do_GET', 'do_POST', 'do_OPTIONS'):
+            h = handler('https://untrusted.example')
+            getattr(h, method)()
+            self.assertEqual(h.code, 403)
+            self.assertNotIn('Access-Control-Allow-Origin', h.sent_headers)
+        h = handler('http://localhost:8088')
+        h.do_OPTIONS()
+        self.assertEqual(h.code, 204)
+        self.assertEqual(h.sent_headers['Access-Control-Allow-Origin'],
+                         'http://localhost:8088')
+
 
 if __name__ == '__main__':
     unittest.main()
