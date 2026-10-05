@@ -1,0 +1,30 @@
+--- a/klippy/kinematics/extruder.py
++++ b/klippy/kinematics/extruder.py
+@@ -312,0 +313,5 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None:
++            bg.require_idle(self.name)
++            if extruder_name:
++                bg.require_idle(extruder_name)
+@@ -353,0 +359,3 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None:
++            bg.require_idle(self.name)
+@@ -385,0 +394,3 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None:
++            bg.require_idle(self.name)
+@@ -1292,0 +1304,3 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None:
++            bg.require_idle(self.name)
+@@ -1411,0 +1426,3 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None:
++            bg.require_idle(self.name)
+--- a/klippy/toolhead.py
++++ b/klippy/toolhead.py
+@@ -559,0 +560,3 @@
++        bg = self.printer.lookup_object('sc_bg', None)
++        if bg is not None and hasattr(extruder, 'get_name'):
++            bg.require_idle(extruder.get_name())

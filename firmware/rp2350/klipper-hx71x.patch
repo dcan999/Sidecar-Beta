@@ -1,0 +1,191 @@
+diff --git a/klippy/extras/hx71x.py b/klippy/extras/hx71x.py
+index a7f49f8..f4b72a9 100644
+--- a/klippy/extras/hx71x.py
++++ b/klippy/extras/hx71x.py
+@@ -4,6 +4,7 @@
+ #
+ # This file may be distributed under the terms of the GNU GPLv3 license.
+ import logging
++import math
+ from . import bulk_sensor
+ 
+ #
+@@ -144,6 +145,22 @@ class HX71xBase:
+                 self._start_measurements()
+         else:
+             self.consecutive_fails = 0
++        if samples:
++            try:
++                t0 = samples[0][0]
++                tn = samples[-1][0]
++                bad_time = (not math.isfinite(t0)) or (not math.isfinite(tn))
++            except Exception:
++                bad_time = True
++            if bad_time:
++                try:
++                    et = eventtime
++                except NameError:
++                    et = self.printer.get_reactor().monotonic()
++                now_pt = self.mcu.estimated_print_time(et)
++                inv = 1.0 / float(self.sps)
++                n = len(samples)
++                samples = [(now_pt - (n - 1 - i) * inv,) + s[1:] for i, s in enumerate(samples)]
+         return {'data': samples, 'errors': self.last_error_count,
+                 'overflows': self.ffreader.get_last_overflows()}
+ 
+diff --git a/src/sensor_hx71x.c b/src/sensor_hx71x.c
+index 74575ee..c1f5bcc 100644
+--- a/src/sensor_hx71x.c
++++ b/src/sensor_hx71x.c
+@@ -24,6 +24,7 @@ struct hx71x_adc {
+     uint32_t last_error;
+     struct gpio_in dout; // pin used to receive data from the hx71x
+     struct gpio_out sclk; // pin used to generate clock for the hx71x
++    uint32_t sclk_pin;
+     struct sensor_bulk sb;
+     struct load_cell_probe *lce;
+ };
+@@ -96,6 +97,28 @@ hx71x_raw_read(struct gpio_in dout, struct gpio_out sclk, int num_bits)
+ }
+ 
+ 
++static void
++hx71x_raw_read_group(struct hx71x_adc **adcs, uint32_t *out, int count
++                     , int num_bits)
++{
++    for (int i=0; i<count; i++)
++        out[i] = 0;
++    struct gpio_out sclk = adcs[0]->sclk;
++    while (num_bits--) {
++        irq_disable();
++        gpio_out_toggle_noirq(sclk);
++        hx71x_delay_noirq();
++        gpio_out_toggle_noirq(sclk);
++        for (int i=0; i<count; i++) {
++            uint_fast8_t bit = gpio_in_read(adcs[i]->dout);
++            out[i] = (out[i] << 1) | bit;
++        }
++        irq_enable();
++        hx71x_delay();
++    }
++}
++
++
+ /****************************************************************
+  * HX711 and HX717 Sensor Support
+  ****************************************************************/
+@@ -144,6 +167,54 @@ add_sample(struct hx71x_adc *hx71x, uint8_t oid, uint32_t counts,
+ }
+ 
+ // hx71x ADC query
++
++#define HX71X_MAX_GROUP 8
++
++static void
++hx71x_read_adc_group(struct hx71x_adc **adcs, uint8_t *oids, int count)
++{
++    if (count <= 0)
++        return;
++    uint_fast8_t gain_channel = adcs[0]->gain_channel;
++    uint32_t raw[HX71X_MAX_GROUP];
++    if (count > HX71X_MAX_GROUP)
++        count = HX71X_MAX_GROUP;
++
++    hx71x_raw_read_group(adcs, raw, count, 24 + gain_channel);
++
++    for (int i=0; i<count; i++) {
++        struct hx71x_adc *hx71x = adcs[i];
++        uint8_t oid = oids[i];
++        uint32_t adc = raw[i];
++
++        irq_disable();
++        uint8_t flags = hx71x->flags;
++        hx71x->flags = 0;
++        irq_enable();
++
++        uint32_t counts = adc >> gain_channel;
++        if (counts & 0x800000)
++            counts |= 0xFF000000;
++
++        uint_fast8_t extras_mask = (1 << gain_channel) - 1;
++        if ((adc & extras_mask) != extras_mask) {
++            hx71x->last_error = SAMPLE_ERROR_DESYNC;
++        } else if (flags & HX_OVERFLOW) {
++            hx71x->last_error = SAMPLE_ERROR_READ_TOO_LONG;
++        }
++
++        if (hx71x->last_error != 0) {
++            counts = hx71x->last_error;
++        }
++
++        if (hx71x->last_error == 0 && hx71x->lce) {
++            load_cell_probe_report_sample(hx71x->lce, counts);
++        }
++
++        add_sample(hx71x, oid, counts, false);
++    }
++}
++
+ static void
+ hx71x_read_adc(struct hx71x_adc *hx71x, uint8_t oid)
+ {
+@@ -200,6 +271,7 @@ command_config_hx71x(uint32_t *args)
+     hx71x->gain_channel = gain_channel;
+     hx71x->dout = gpio_in_setup(args[2], 1);
+     hx71x->sclk = gpio_out_setup(args[3], 0);
++    hx71x->sclk_pin = args[3];
+     gpio_out_write(hx71x->sclk, 1); // put chip in power down state
+ }
+ DECL_COMMAND(command_config_hx71x, "config_hx71x oid=%c gain_channel=%c"
+@@ -257,13 +329,44 @@ DECL_COMMAND(command_query_hx71x_status, "query_hx71x_status oid=%c");
+ void
+ hx71x_capture_task(void)
+ {
+-    if (!sched_check_wake(&wake_hx71x))
+-        return;
+-    uint8_t oid;
+-    struct hx71x_adc *hx71x;
+-    foreach_oid(oid, hx71x, command_config_hx71x) {
+-        if (hx71x->flags)
+-            hx71x_read_adc(hx71x, oid);
++
++if (!sched_check_wake(&wake_hx71x))
++    return;
++
++uint8_t oid;
++struct hx71x_adc *hx71x;
++foreach_oid(oid, hx71x, command_config_hx71x) {
++    if (!hx71x->flags)
++        continue;
++
++    struct hx71x_adc *group[HX71X_MAX_GROUP];
++    uint8_t oids[HX71X_MAX_GROUP];
++    int count = 0;
++    uint8_t oid2;
++    struct hx71x_adc *hx2;
++
++    foreach_oid(oid2, hx2, command_config_hx71x) {
++        if (!hx2->rest_ticks)
++            continue;
++        if (hx2->sclk_pin != hx71x->sclk_pin)
++            continue;
++        if (hx2->gain_channel != hx71x->gain_channel)
++            continue;
++        if (!hx71x_is_data_ready(hx2))
++            continue;
++        if (count < HX71X_MAX_GROUP) {
++            group[count] = hx2;
++            oids[count] = oid2;
++            count++;
++        }
++    }
++
++    if (count <= 1) {
++        hx71x_read_adc(hx71x, oid);
++        continue;
+     }
++
++    hx71x_read_adc_group(group, oids, count);
++}
+ }
+ DECL_TASK(hx71x_capture_task);

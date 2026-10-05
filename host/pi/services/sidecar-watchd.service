@@ -1,0 +1,24 @@
+[Unit]
+Description=Sidecar G-code preparation example
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sidecar
+WorkingDirectory=/opt/sidecar/host/pi/runtime
+StateDirectory=sidecar
+Environment=MOONRAKER_URL=http://10.42.0.10:7125
+Environment=PREPROCESSOR=/opt/sidecar/host/pi/runtime/sc_preprocess_block4.py
+Environment=JOB_ROOT=/var/lib/sidecar/jobs
+Environment=SC_HEADS=0,1,2,3
+Environment=LANES_PER_SC=4
+Environment=DELETE_RAW=0
+Environment=FIREWALL_RAW=0
+Environment=AUTO_START=0
+ExecStart=/opt/sidecar/venv/bin/python -u /opt/sidecar/host/pi/runtime/sc_watchd.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

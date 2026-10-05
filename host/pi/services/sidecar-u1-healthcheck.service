@@ -1,0 +1,12 @@
+[Unit]
+Description=Sidecar U1 command availability check example
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sidecar
+StateDirectory=sidecar
+Environment=U1_MOONRAKER=http://10.42.0.10:7125
+Environment=OUT_JSON=/var/lib/sidecar/u1_commands.json
+ExecStart=/opt/sidecar/venv/bin/python /opt/sidecar/host/pi/runtime/sc_u1_healthcheck.py

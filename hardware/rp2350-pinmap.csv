@@ -1,0 +1,46 @@
+group,signal,gpio,notes
+host,UART0_TX,0,MAIN UART link
+host,UART0_RX,1,MAIN UART link
+lane1,STEP,2,
+lane1,DIR,3,
+lane1,ENABLE,4,Verify enable polarity
+lane1,DIAG,5,
+lane2,STEP,6,
+lane2,DIR,7,
+lane2,ENABLE,8,Verify enable polarity
+lane2,DIAG,9,
+lane3,STEP,10,
+lane3,DIR,11,
+lane3,ENABLE,12,Verify enable polarity
+lane3,DIAG,13,
+lane4,STEP,14,
+lane4,DIR,15,
+lane4,ENABLE,16,Verify enable polarity
+lane4,DIAG,17,
+drivers,TMC_UART,18,Verify driver addresses
+respool1,A,19,Confirm DRV8833 input semantics
+respool1,B,20,Confirm DRV8833 input semantics
+respool2,A,21,Confirm DRV8833 input semantics
+respool2,B,22,Confirm DRV8833 input semantics
+respool3,A,23,Confirm DRV8833 input semantics
+respool3,B,24,Confirm DRV8833 input semantics
+respool4,A,25,Confirm DRV8833 input semantics
+respool4,B,26,Confirm DRV8833 input semantics
+respool,SLEEP,27,Board revision must be confirmed
+lane1,GSW,28,Verify sensor polarity
+lane1,RSW,29,Verify sensor polarity
+lane2,GSW,30,Verify sensor polarity
+lane2,RSW,31,Verify sensor polarity
+lane3,GSW,32,Verify sensor polarity
+lane3,RSW,33,Verify sensor polarity
+lane4,GSW,34,Verify sensor polarity
+lane4,RSW,35,Verify sensor polarity
+hub,SWITCH,36,Verify sensor polarity
+buffer,TENSION,37,Verify sensor polarity
+buffer,COMPRESSION,38,Verify sensor polarity
+status,LED,39,
+weighing,HX711_CLK,40,Shared clock
+weighing,HX711_DOUT1,41,
+weighing,HX711_DOUT2,42,
+weighing,HX711_DOUT3,43,
+weighing,HX711_DOUT4,44,

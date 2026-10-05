@@ -1,0 +1,29 @@
+[Unit]
+Description=Sidecar Pi coordinator example
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sidecar
+WorkingDirectory=/opt/sidecar/host/pi/runtime
+RuntimeDirectory=sidecar
+StateDirectory=sidecar
+Environment=U1_HTTP=http://10.42.0.10:7125
+Environment=U1_WS=ws://10.42.0.10:7125/websocket
+Environment=BT_HTTP=http://127.0.0.1:7125
+Environment=SC_API_HOST=127.0.0.1
+Environment=SC_API_PORT=8090
+Environment=SC_HEADS_CFG=/var/lib/sidecar/sc_heads.json
+Environment=SERVO_CFG=/var/lib/sidecar/servo_mapping.json
+Environment=LANE_META_CFG=/var/lib/sidecar/lane_meta.json
+Environment=SC_LC_CFG=/var/lib/sidecar/sc_loadcell.json
+Environment=AUTO_LTGL=0
+Environment=BF_FOLLOW_ACTIVE=0
+Environment=PUCK_ENABLE=0
+ExecStart=/usr/bin/flock -n /run/sidecar/sc_gate.lock /opt/sidecar/venv/bin/python -u /opt/sidecar/host/pi/runtime/sc_gate.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

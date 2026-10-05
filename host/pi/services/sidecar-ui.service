@@ -1,0 +1,15 @@
+[Unit]
+Description=Sidecar touchscreen static server example
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sidecar
+WorkingDirectory=/opt/sidecar/host/pi/ui/source
+ExecStart=/usr/bin/python3 -m http.server 8088 --bind 127.0.0.1 --directory /opt/sidecar/host/pi/ui/source/build
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
